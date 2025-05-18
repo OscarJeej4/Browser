@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tabbed Mini Browser with Password</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0; height: 100%; width: 100%;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      background: #fafafa;
+    }
+    /* Password screen */
+    #passwordScreen {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: #222;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+    #passwordScreen h2 {
+      margin-bottom: 20px;
+      font-weight: normal;
+      font-size: 24px;
+    }
+    #passwordInput {
+      font-size: 16px;
+      padding: 8px;
+      width: 220px;
+      border: none;
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+    #passwordBtn {
+      font-size: 16px;
+      padding: 8px 16px;
+      cursor: pointer;
+      border: none;
+      border-radius: 4px;
+      background: #4285f4;
+      color: white;
+      transition: background 0.3s;
+    }
+    #passwordBtn:hover {
+      background: #357ae8;
+    }
+    #errorMsg {
+      color: #f44336;
+      visibility: hidden;
+      margin-top: 8px;
+    }
+
+    /* Main app container - hidden initially */
+    #app {
+      display: none;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Tabs bar */
+    #tabsBar {
+      display: flex;
+      background: #ddd;
+      border-bottom: 1px solid #aaa;
+      overflow-x: auto;
+      user-select: none;
+    }
+    #tabsBar::-webkit-scrollbar {
+      height: 6px;
+    }
+    #tabsBar::-webkit-scrollbar-thumb {
+      background: #999;
+      border-radius: 3px;
+    }
+    .tab {
+      padding: 8px 12px;
+      cursor: pointer;
+      background: #ccc;
+      border-right: 1px solid #bbb;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .tab.active {
+      background: white;
+      border-bottom: 2px solid #4285f4;
+      font-weight: bold;
+    }
+    .tab button.closeBtn {
+      border: none;
+      background: transparent;
+      font-weight: bold;
+      cursor: pointer;
+      color: #666;
+      font-size: 14px;
+      line-height: 1;
+      padding: 0;
+    }
+    .tab button.closeBtn:hover {
+      color: #f44336;
+    }
+    #newTabBtn {
+      padding: 8px 12px;
+      cursor: pointer;
+      background: #ccc;
+      border: none;
+      font-size: 18px;
+      font-weight: bold;
+      user-select: none;
+      transition: background 0.3s;
+    }
+    #newTabBtn:hover {
+      background: #bbb;
+    }
+
+    /* Controls */
+    #controls {
+      display: flex;
+      padding: 8px;
+      background: #eee;
+      align-items: center;
+      gap: 8px;
+    }
+    button.controlBtn {
+      padding: 6px 12px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #urlBar {
+      flex-grow: 1;
+      padding: 8px;
+      font-size: 16px;
+    }
+
+    /* Browser container & iframes */
+    #browserContainer {
+      flex-grow: 1;
+      position: relative;
+      background: white;
+    }
+    iframe {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      border: none;
+      display: none;
+    }
+    iframe.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Password Screen -->
+  <div id="passwordScreen">
+    <h2>Enter Password to Access</h2>
+    <input type="password" id="passwordInput" placeholder="Password" autocomplete="off" />
+    <button id="passwordBtn">Submit</button>
+    <p id="errorMsg">Incorrect password, try again.</p>
+  </div>
+
+  <!-- Main app container -->
+  <div id="app">
+    <div id="tabsBar">
+      <button id="newTabBtn" title="New Tab">+</button>
+    </div>
+    <div id="controls">
+      <button class="controlBtn" id="backBtn" title="Back">&larr;</button>
+      <button class="controlBtn" id="forwardBtn" title="Forward">&rarr;</button>
+      <button class="controlBtn" id="reloadBtn" title="Reload">&#x21bb;</button>
+      <input type="text" id="urlBar" placeholder="Enter URL and press Enter" />
+      <button class="controlBtn" id="goBtn">Go</button>
+    </div>
+    <div id="browserContainer"></div>
+  </div>
+
+<script>
+  // Password gate logic
+  const passwordScreen = document.getElementById('passwordScreen');
+  const passwordInput = document.getElementById('passwordInput');
+  const passwordBtn = document.getElementById('passwordBtn');
+  const errorMsg = document.getElementById('errorMsg');
+  const app = document.getElementById('app');
+
+  // Password (case-sensitive)
+  const PASSWORD = "browsing";
+
+  function checkPassword() {
+    if (passwordInput.value === PASSWORD) {
+      passwordScreen.style.display = 'none';
+      app.style.display = 'flex';
+      errorMsg.style.visibility = 'hidden';
+      passwordInput.value = '';
+      // Focus URL bar when unlocked
+      urlBar.focus();
+    } else {
+      errorMsg.style.visibility = 'visible';
+      passwordInput.value = '';
+      passwordInput.focus();
+    }
+  }
+
+  passwordBtn.addEventListener('click', checkPassword);
+  passwordInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      checkPassword();
+    }
+  });
+
+  // Browser tabbed logic
+
+  const tabsBar = document.getElementById('tabsBar');
+  const newTabBtn = document.getElementById('newTabBtn');
+  const browserContainer = document.getElementById('browserContainer');
+  const urlBar = document.getElementById('urlBar');
+  const backBtn = document.getElementById('backBtn');
+  const forwardBtn = document.getElementById('forwardBtn');
+  const reloadBtn = document.getElementById('reloadBtn');
+  const goBtn = document.getElementById('goBtn');
+
+  // Tabs state: each tab holds history array, index, iframe element, url
+  const tabs = [];
+  let activeTabIndex = -1;
+
+  function normalizeUrl(url) {
+    if (!url.match(/^https?:\/\//)) {
+      return 'https://' + url;
+    }
+    return url;
+  }
+
+  function createTab(url = 'https://example.com') {
+    // Create tab button
+    const tabButton = document.createElement('div');
+    tabButton.className = 'tab';
+
+    const titleSpan = document.createElement('span');
+    titleSpan.textContent = 'New Tab';
+    tabButton.appendChild(titleSpan);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'closeBtn';
+    closeBtn.textContent = '×';
+    tabButton.appendChild(closeBtn);
+
+    tabsBar.insertBefore(tabButton, newTabBtn);
+
+    // Create iframe
+    const iframe = document.createElement('iframe');
+    iframe.src = url;
+    browserContainer.appendChild(iframe);
+
+    // Tab data
+    const tab = {
+      tabButton,
+      titleSpan,
+      closeBtn,
+      iframe,
+      history: [url],
+      historyIndex: 0,
+    };
+    tabs.push(tab);
+
+    // Events
+    tabButton.addEventListener('click', () => {
+      if (activeTabIndex !== tabs.indexOf(tab)) {
+        switchTab(tabs.indexOf(tab));
+      }
+    });
+
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeTab(tabs.indexOf(tab));
+    });
+
+    // Update URL bar and title when iframe loads
+    iframe.addEventListener('load', () => {
+      try {
+        const currentUrl = iframe.contentWindow.location.href;
+        tab.history[tab.historyIndex] = currentUrl;
+        if (activeTabIndex === tabs.indexOf(tab)) {
+          urlBar.value = currentUrl;
+          tab.titleSpan.textContent = iframe.contentDocument.title || currentUrl;
+          updateButtons();
+        } else {
+          // Update title anyway
+          tab.titleSpan.textContent = iframe.contentDocument.title || currentUrl;
+        }
+      } catch (e) {
+        // Cross-origin: fallback to last URL in history
+        if (activeTabIndex === tabs.indexOf(tab)) {
+          urlBar.value = tab.history[tab.historyIndex];
+          tab.titleSpan.textContent = tab.history[tab.historyIndex];
+          updateButtons();
+        }
+      }
+    });
+
+    return tabs.length - 1;
+  }
+
+  function switchTab(index) {
+    if (index < 0 || index >= tabs.length) return;
+
+    if (activeTabIndex !== -1) {
+      const oldTab = tabs[activeTabIndex];
+      oldTab.tabButton.classList.remove('active');
+      oldTab.iframe.classList.remove('active');
+    }
+
+    activeTabIndex = index;
+    const newTab = tabs[activeTabIndex];
+    newTab.tabButton.classList.add('active');
+    newTab.iframe.classList.add('active');
+    urlBar.value = newTab.history[newTab.historyIndex];
+    updateButtons();
+  }
+
+  function closeTab(index) {
+    if (index < 0 || index >= tabs.length) return;
+
+    const tab = tabs[index];
+    tab.tabButton.remove();
+    tab.iframe.remove();
+    tabs.splice(index, 1);
+
+    if (tabs.length === 0) {
+      // Create a new tab if none left
+      const newIndex = createTab();
+      switchTab(newIndex);
+      return;
+    }
+
+    // If closed tab was active, switch active tab sensibly
+    if (activeTabIndex === index) {
+      if (index === tabs.length) {
+        switchTab(index - 1);
+      } else {
+        switchTab(index);
+      }
+    } else if (activeTabIndex > index) {
+      activeTabIndex--;
+    }
+  }
+
+  function updateButtons() {
+    const tab = tabs[activeTabIndex];
+    backBtn.disabled = tab.historyIndex <= 0;
+    forwardBtn.disabled = tab.historyIndex >= tab.history.length - 1;
+  }
+
+  function navigateTo(url) {
+    if (!url) return;
+    url = normalizeUrl(url);
+
+    const tab = tabs[activeTabIndex];
+    tab.history = tab.history.slice(0, tab.historyIndex + 1); // truncate forward history
+    tab.history.push(url);
+    tab.historyIndex++;
+    tab.iframe.src = url;
+    urlBar.value = url;
+    updateButtons();
+  }
+
+  backBtn.addEventListener('click', () => {
+    const tab = tabs[activeTabIndex];
+    if (tab.historyIndex > 0) {
+      tab.historyIndex--;
+      const url = tab.history[tab.historyIndex];
+      tab.iframe.src = url;
+      urlBar.value = url;
+      updateButtons();
+    }
+  });
+
+  forwardBtn.addEventListener('click', () => {
+    const tab = tabs[activeTabIndex];
+    if (tab.historyIndex < tab.history.length - 1) {
+      tab.historyIndex++;
+      const url = tab.history[tab.historyIndex];
+      tab.iframe.src = url;
+      urlBar.value = url;
+      updateButtons();
+    }
+  });
+
+  reloadBtn.addEventListener('click', () => {
+    const tab = tabs[activeTabIndex];
+    tab.iframe.src = tab.history[tab.historyIndex];
+  });
+
+  goBtn.addEventListener('click', () => {
+    navigateTo(urlBar.value.trim());
+  });
+
+  urlBar.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      navigateTo(urlBar.value.trim());
+    }
+  });
+
+  newTabBtn.addEventListener('click', () => {
+    const newIndex = createTab();
+    switchTab(newIndex);
+  });
+
+  // Create initial tab and show it
+  const firstTabIndex = createTab('https://example.com');
+  // Wait for password unlock to show
+  // So no switching yet — after password correct:
+  // we'll switchTab(firstTabIndex);
+
+  // After unlocking, show the first tab
+  function unlockAndShow() {
+    app.style.display = 'flex';
+    switchTab(firstTabIndex);
+  }
+
+  // Adjust password check to show tab after unlock
+  function checkPassword() {
+    if (passwordInput.value === PASSWORD) {
+      passwordScreen.style.display = 'none';
+      unlockAndShow();
+      errorMsg.style.visibility = 'hidden';
+      passwordInput.value = '';
+      urlBar.focus();
+    } else {
+      errorMsg.style.visibility = 'visible';
+      passwordInput.value = '';
+      passwordInput.focus();
+    }
+  }
+  // Override event listeners to new checkPassword
+  passwordBtn.removeEventListener('click', checkPassword);
+  passwordBtn.addEventListener('click', checkPassword);
+  passwordInput.removeEventListener('keydown', e => {
+    if (e.key === 'Enter') checkPassword();
+  });
+  passwordInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') checkPassword();
+  });
+
+</script>
+
+</body>
+</html>
